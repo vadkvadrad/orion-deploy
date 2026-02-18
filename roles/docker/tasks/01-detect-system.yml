@@ -1,0 +1,19 @@
+---
+- name: Gather minimal facts about distribution and package manager
+  ansible.builtin.setup:
+    gather_subset:
+      - '!all'
+      - 'distribution'
+      - 'pkg_mgr'
+
+- name: Determine package manager family
+  ansible.builtin.set_fact:
+    pkg_family: >-
+      {{ 'debian' if ansible_pkg_mgr in ['apt', 'aptitude'] else
+         'redhat' if ansible_pkg_mgr in ['yum', 'dnf'] else
+         'unknown' }}
+
+- name: Fail if package manager is not supported
+  ansible.builtin.fail:
+    msg: "Unsupported package manager '{{ ansible_pkg_mgr }}'. This role supports only apt, dnf, yum."
+  when: pkg_family == 'unknown'

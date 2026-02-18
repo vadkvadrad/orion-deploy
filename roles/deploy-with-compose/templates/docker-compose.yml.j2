@@ -1,0 +1,43 @@
+version: '3.8'
+
+services:
+  app:
+    image: "{{ docker_image_name }}:{{ docker_image_tag | default('latest') }}"
+    container_name: "{{ compose_project_name | default('app') | replace(' ', '_') | lower }}"
+    restart: "{{ restart_policy | default('unless-stopped') }}"
+    {% if compose_environment | length > 0 %}
+    environment:
+{% for key, value in compose_environment.items() %}
+      - {{ key }}={{ value }}
+{% endfor %}
+    {% endif %}
+    {% if compose_ports | length > 0 %}
+    ports:
+{% for port in compose_ports %}
+      - "{{ port }}"
+{% endfor %}
+    {% endif %}
+    {% if compose_volumes | length > 0 %}
+    volumes:
+{% for volume in compose_volumes %}
+      - {{ volume }}
+{% endfor %}
+    {% endif %}
+    {% if compose_networks | length > 0 %}
+    networks:
+{% for network in compose_networks %}
+      - {{ network }}
+{% endfor %}
+    {% endif %}
+    {% if compose_extra_config | length > 0 %}
+{{ compose_extra_config | indent(4) }}
+    {% endif %}
+
+{% if compose_networks | length > 0 %}
+networks:
+{% for network in compose_networks %}
+  {{ network }}:
+    driver: bridge
+{% endfor %}
+{% endif %}
+

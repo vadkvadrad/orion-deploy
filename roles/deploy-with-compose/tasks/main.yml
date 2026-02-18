@@ -1,0 +1,65 @@
+---
+- name: Set compose project directory (use temp if not specified)
+  set_fact:
+    actual_compose_project_dir: "{{ compose_project_dir if compose_project_dir else '/tmp/ansible-compose-' + ansible_date_time.epoch | string }}"
+    is_temp_compose_dir: "{{ compose_project_dir | length == 0 }}"
+
+- name: Ensure docker-compose project directory exists
+  file:
+    path: "{{ actual_compose_project_dir }}"
+    state: directory
+    mode: '0755'
+    owner: "{{ compose_user | default('appuser') }}"
+
+- name: Check if custom docker-compose template exists in inventory
+  stat:
+    path: "{{ playbook_dir }}/inventory/templates/{{ compose_template_path | default('docker-compose.yml.j2') }}"
+  register: custom_template_stat
+  delegate_to: localhost
+  become: false
+
+- name: Copy docker-compose template to remote server (custom template)
+  template:
+    src: "{{ playbook_dir }}/inventory/templates/{{ compose_template_path | default('docker-compose.yml.j2') }}"
+    dest: "{{ actual_compose_project_dir }}/{{ compose_file_name }}"
+    mode: '0644'
+    owner: "{{ compose_user | default('appuser') }}"
+  when: custom_template_stat.stat.exists
+  register: template_result
+
+- name: Copy docker-compose template to remote server (default template)
+  template:
+    src: docker-compose.yml.j2
+    dest: "{{ actual_compose_project_dir }}/{{ compose_file_name }}"
+    mode: '0644'
+    owner: "{{ compose_user | default('appuser') }}"
+  when: not custom_template_stat.stat.exists
+  register: template_result
+
+- name: Pull latest image
+  community.docker.docker_image:
+    name: "{{ docker_image_name }}"
+    tag: "{{ docker_image_tag }}"
+    source: pull
+    force_source: true
+
+- name: Deploy application with docker compose
+  community.docker.docker_compose_v2:
+    project_src: "{{ actual_compose_project_dir }}"
+    state: present
+    pull: "{{ pull_policy | default('always') }}"
+    restarted: "{{ restart_containers | default(true) | bool }}"
+    remove_orphans: "{{ remove_orphans | default(true) | bool }}"
+    timeout: "{{ compose_timeout | default(120) }}"
+  register: compose_result
+
+- name: Show deployment result (when changed or failed)
+  debug:
+    msg: "{{ compose_result }}"
+  when: compose_result.changed or compose_result.failed
+
+- name: Clean up temporary compose directory
+  file:
+    path: "{{ actual_compose_project_dir }}"
+    state: absent
+  when: is_temp_compose_dir | bool

@@ -1,0 +1,18 @@
+---
+- name: Enable and start Docker service
+  ansible.builtin.systemd:
+    name: docker
+    state: started
+    enabled: true
+    daemon_reload: true
+  become: true
+
+- name: Verify Docker is running and functional
+  ansible.builtin.command: docker info --format '{{.ServerVersion}}'
+  register: docker_info
+  changed_when: false
+  become: true
+
+- name: Debug Docker version after installation
+  ansible.builtin.debug:
+    msg: "Docker installed and running. Version: {{ docker_info.stdout }}"

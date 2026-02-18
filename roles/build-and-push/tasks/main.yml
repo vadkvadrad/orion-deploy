@@ -1,0 +1,81 @@
+---
+- name: Check if buildx is available
+  command: docker buildx version
+  register: buildx_check
+  changed_when: false
+  failed_when: false
+  become: "{{ build_on_remote | default(false) | bool }}"
+
+- name: Set fact for buildx availability
+  set_fact:
+    buildx_available: "{{ buildx_check.rc == 0 }}"
+
+- name: Create buildx builder if needed
+  command: docker buildx create --name {{ buildx_builder_name | default('default') }} --use
+  register: buildx_create
+  changed_when: buildx_create.rc == 0
+  failed_when: buildx_create.rc != 0 and 'already exists' not in buildx_create.stderr
+  when: buildx_available
+  become: "{{ build_on_remote | default(false) | bool }}"
+
+- name: Use existing buildx builder
+  command: docker buildx use {{ buildx_builder_name | default('default') }}
+  when: buildx_available and buildx_create.rc != 0 and 'already exists' in buildx_create.stderr
+  become: "{{ build_on_remote | default(false) | bool }}"
+
+- name: Create temporary directory for repository clone
+  file:
+    path: "{{ build_temp_dir }}"
+    state: directory
+    mode: '0755'
+  become: "{{ build_on_remote | default(false) | bool }}"
+
+- name: Clone or update Git repository
+  git:
+    repo: "{{ app_git_repository }}"
+    dest: "{{ build_temp_dir }}"
+    version: "{{ app_git_branch | default('main') }}"
+    force: true
+    update: true
+  become: "{{ build_on_remote | default(false) | bool }}"
+
+- name: Log in to Docker registry
+  community.docker.docker_login:
+    registry_url: "{{ docker_registry_url | default('https://index.docker.io/v1/') }}"
+    username: "{{ docker_username }}"
+    password: "{{ docker_password }}"
+  become: "{{ build_on_remote | default(false) | bool }}"
+
+- name: Build and push Docker image (using buildx)
+  command: >-
+    docker buildx build
+    --platform {{ docker_platforms | default('linux/amd64') }}
+    -t {{ docker_image_name }}:{{ docker_image_tag }}
+    --push
+    {{ build_temp_dir }}
+  args:
+    chdir: "{{ build_temp_dir }}"
+  when: buildx_available
+  become: "{{ build_on_remote | default(false) | bool }}"
+
+- name: Build and push Docker image (fallback to docker build)
+  command: >-
+    docker build
+    -t {{ docker_image_name }}:{{ docker_image_tag }}
+    {{ build_temp_dir }}
+  args:
+    chdir: "{{ build_temp_dir }}"
+  when: not buildx_available
+  become: "{{ build_on_remote | default(false) | bool }}"
+  register: docker_build_result
+
+- name: Push Docker image (fallback method)
+  command: docker push {{ docker_image_name }}:{{ docker_image_tag }}
+  when: not buildx_available
+  become: "{{ build_on_remote | default(false) | bool }}"
+
+- name: Remove temporary clone directory
+  file:
+    path: "{{ build_temp_dir }}"
+    state: absent
+  become: "{{ build_on_remote | default(false) | bool }}"

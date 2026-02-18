@@ -1,0 +1,18 @@
+---
+- name: Include tasks to detect OS family and package manager
+  ansible.builtin.include_tasks: 01-detect-system.yml
+
+- name: Check if Docker is already installed
+  ansible.builtin.include_tasks: 02-check-docker-installed.yml
+
+- name: Install Docker on Debian/Ubuntu family
+  ansible.builtin.include_tasks: 03-install-docker-debian.yml
+  when: not docker_already_installed and pkg_family == 'debian'
+
+- name: Install Docker on RedHat family (dnf/yum)
+  ansible.builtin.include_tasks: 04-install-docker-redhat.yml
+  when: not docker_already_installed and pkg_family == 'redhat'
+
+- name: Start Docker service and verify it's working
+  ansible.builtin.include_tasks: 05-start-and-verify-docker.yml
+  when: not docker_already_installed

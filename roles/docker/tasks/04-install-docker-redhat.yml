@@ -1,0 +1,40 @@
+---
+- name: Install prerequisite packages (RedHat family)
+  ansible.builtin.dnf:
+    name:
+      - dnf-plugins-core
+      - device-mapper-persistent-data
+      - lvm2
+    state: present
+  when: ansible_pkg_mgr == 'dnf'
+  become: true
+
+- name: Add Docker CE repository (dnf)
+  ansible.builtin.dnf:
+    name: https://download.docker.com/linux/centos/docker-ce.repo
+    state: present
+  when: ansible_pkg_mgr == 'dnf'
+  become: true
+
+- name: Install Docker packages (dnf)
+  ansible.builtin.dnf:
+    name:
+      - docker-ce
+      - docker-ce-cli
+      - containerd.io
+      - docker-buildx-plugin
+      - docker-compose-plugin
+    state: present
+  when: ansible_pkg_mgr == 'dnf'
+  become: true
+
+- name: Install Docker packages (yum - старые системы)
+  ansible.builtin.yum:
+    name:
+      - docker-ce
+      - docker-ce-cli
+      - containerd.io
+    state: present
+    update_cache: true
+  when: ansible_pkg_mgr == 'yum'
+  become: true
