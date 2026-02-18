@@ -4,31 +4,45 @@
   register: buildx_check
   changed_when: false
   failed_when: false
-  become: "{{ build_on_remote | default(false) | bool }}"
+  become: true
 
 - name: Set fact for buildx availability
   set_fact:
     buildx_available: "{{ buildx_check.rc == 0 }}"
 
+- name: Check if buildx builder exists
+  command: docker buildx ls
+  register: buildx_list
+  changed_when: false
+  failed_when: false
+  when: buildx_available
+  become: true
+
+- name: Set fact if builder exists
+  set_fact:
+    builder_exists: "{{ buildx_builder_name | default('ansible-builder') in buildx_list.stdout }}"
+  when: buildx_available
+
 - name: Create buildx builder if needed
-  command: docker buildx create --name {{ buildx_builder_name | default('default') }} --use
+  command: docker buildx create --name {{ buildx_builder_name | default('ansible-builder') }} --use
   register: buildx_create
   changed_when: buildx_create.rc == 0
-  failed_when: buildx_create.rc != 0 and 'already exists' not in buildx_create.stderr
-  when: buildx_available
-  become: "{{ build_on_remote | default(false) | bool }}"
+  failed_when: buildx_create.rc != 0
+  when: buildx_available and not builder_exists
+  become: true
 
 - name: Use existing buildx builder
-  command: docker buildx use {{ buildx_builder_name | default('default') }}
-  when: buildx_available and buildx_create.rc != 0 and 'already exists' in buildx_create.stderr
-  become: "{{ build_on_remote | default(false) | bool }}"
+  command: docker buildx use {{ buildx_builder_name | default('ansible-builder') }}
+  when: buildx_available and builder_exists
+  become: true
 
 - name: Create temporary directory for repository clone
   file:
     path: "{{ build_temp_dir }}"
     state: directory
     mode: '0755'
-  become: "{{ build_on_remote | default(false) | bool }}"
+  become: true
+  check_mode: no
 
 - name: Clone or update Git repository
   git:
@@ -37,14 +51,38 @@
     version: "{{ app_git_branch | default('main') }}"
     force: true
     update: true
-  become: "{{ build_on_remote | default(false) | bool }}"
+  become: true
+  check_mode: no
+
+- name: Check if Dockerfile exists
+  stat:
+    path: "{{ build_temp_dir }}/Dockerfile"
+  register: dockerfile_stat
+  become: true
+
+- name: List directory contents for debugging
+  command: ls -la {{ build_temp_dir }}
+  register: dir_contents
+  become: true
+  when: not dockerfile_stat.stat.exists
+  changed_when: false
+
+- name: Show directory contents if Dockerfile not found
+  debug:
+    var: dir_contents.stdout_lines
+  when: not dockerfile_stat.stat.exists
+
+- name: Fail if Dockerfile not found
+  fail:
+    msg: "Dockerfile not found in {{ build_temp_dir }}. Please check that the repository contains a Dockerfile."
+  when: not dockerfile_stat.stat.exists
 
 - name: Log in to Docker registry
   community.docker.docker_login:
     registry_url: "{{ docker_registry_url | default('https://index.docker.io/v1/') }}"
     username: "{{ docker_username }}"
     password: "{{ docker_password }}"
-  become: "{{ build_on_remote | default(false) | bool }}"
+  become: true
 
 - name: Build and push Docker image (using buildx)
   command: >-
@@ -52,30 +90,59 @@
     --platform {{ docker_platforms | default('linux/amd64') }}
     -t {{ docker_image_name }}:{{ docker_image_tag }}
     --push
+    --progress=plain
     {{ build_temp_dir }}
-  args:
-    chdir: "{{ build_temp_dir }}"
+  register: buildx_build_result
   when: buildx_available
-  become: "{{ build_on_remote | default(false) | bool }}"
+  become: true
+  check_mode: no
+
+- name: Show build output
+  debug:
+    msg: "{{ buildx_build_result.stdout_lines }}"
+  when: buildx_available and buildx_build_result.stdout_lines | length > 0
+
+- name: Show build errors if any
+  debug:
+    msg: "{{ buildx_build_result.stderr_lines }}"
+  when: buildx_available and buildx_build_result.stderr_lines | length > 0
 
 - name: Build and push Docker image (fallback to docker build)
-  command: >-
+  shell: >-
     docker build
+    --progress=plain
     -t {{ docker_image_name }}:{{ docker_image_tag }}
     {{ build_temp_dir }}
-  args:
-    chdir: "{{ build_temp_dir }}"
   when: not buildx_available
-  become: "{{ build_on_remote | default(false) | bool }}"
+  become: true
+  check_mode: no
   register: docker_build_result
+
+- name: Show docker build output
+  debug:
+    msg: "{{ docker_build_result.stdout_lines }}"
+  when: not buildx_available and docker_build_result.stdout_lines | length > 0
+
+- name: Show docker build errors if any
+  debug:
+    msg: "{{ docker_build_result.stderr_lines }}"
+  when: not buildx_available and docker_build_result.stderr_lines | length > 0
 
 - name: Push Docker image (fallback method)
   command: docker push {{ docker_image_name }}:{{ docker_image_tag }}
+  register: docker_push_result
   when: not buildx_available
-  become: "{{ build_on_remote | default(false) | bool }}"
+  become: true
+  check_mode: no
+
+- name: Show docker push output
+  debug:
+    msg: "{{ docker_push_result.stdout_lines }}"
+  when: not buildx_available and docker_push_result.stdout_lines | length > 0
 
 - name: Remove temporary clone directory
   file:
     path: "{{ build_temp_dir }}"
     state: absent
-  become: "{{ build_on_remote | default(false) | bool }}"
+  become: true
+  check_mode: no

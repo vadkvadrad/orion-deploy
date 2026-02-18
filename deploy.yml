@@ -2,16 +2,20 @@
 - name: Install Docker
   hosts: remote_servers
   become: true
+  tags:
+    - docker
+    - install
 
   roles:
     - docker
 
 
 - name: Build and push Docker image
-  hosts: "{{ 'remote_servers' if build_on_remote | default(false) | bool else 'localhost' }}"
-  connection: "{{ 'ssh' if build_on_remote | default(false) | bool else 'local' }}"
-  gather_facts: "{{ build_on_remote | default(false) | bool }}"
-  become: "{{ build_on_remote | default(false) | bool }}"
+  hosts: remote_servers
+  become: true
+  tags:
+    - build
+    - push
 
   roles:
     - build-and-push
@@ -20,6 +24,9 @@
 - name: Deploy application to remote servers
   hosts: remote_servers
   become: true
+  tags:
+    - deploy
+    - compose
 
   roles:
     - deploy-with-compose

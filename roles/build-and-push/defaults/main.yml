@@ -6,11 +6,10 @@ docker_username: ""                       # Логин в Docker registry
 docker_password: ""                       # Пароль или токен доступа
 
 # === Optional settings ===
-build_on_remote: false                    # Выполнять сборку на удаленном сервере (true) или локально (false, по умолчанию)
 app_git_branch: "main"                    # Ветка или тег для сборки
 build_temp_dir: "/tmp/ansible-build-{{ ansible_date_time.epoch }}"  # Временная папка для клона
 docker_registry_url: "https://index.docker.io/v1/"  # По умолчанию — Docker Hub
 docker_platforms: "linux/amd64"           # Платформы для buildx (можно linux/amd64,linux/arm64)
 docker_image_tag: "latest"                # Тег образа
-buildx_builder_name: "default"            # Имя buildx builder (если нужен нестандартный)
+buildx_builder_name: "ansible-builder"      # Имя buildx builder (не может быть "default", так как это зарезервированное имя)
 cleanup_after_build: true                 # Удалять временную папку после сборки (true/false)

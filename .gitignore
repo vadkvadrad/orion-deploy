@@ -1,5 +1,6 @@
 # Inventory - пользовательская директория, не коммитится
 inventory/
+passwords.yml
 
 # Ansible vault files - файлы с зашифрованными секретами
 *.vault

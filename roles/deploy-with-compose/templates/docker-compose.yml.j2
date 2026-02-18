@@ -3,7 +3,7 @@ version: '3.8'
 services:
   app:
     image: "{{ docker_image_name }}:{{ docker_image_tag | default('latest') }}"
-    container_name: "{{ compose_project_name | default('app') | replace(' ', '_') | lower }}"
+    container_name: "{{ actual_container_name | default('app') }}"
     restart: "{{ restart_policy | default('unless-stopped') }}"
     {% if compose_environment | length > 0 %}
     environment:

@@ -6,13 +6,14 @@ docker_image_name: ""                     # Полное имя образа (us
 # === Optional settings ===
 compose_project_dir: ""                   # Путь на сервере, где лежит docker-compose.yml (если пусто - используется временный путь в /tmp, который очищается после деплоя)
 docker_image_tag: "latest"                # Тег образа, который деплоить
-compose_user: "appuser"                   # Пользователь-владелец директории compose
+compose_user: "{{ ansible_user | default('appuser') }}"  # Пользователь-владелец директории compose (по умолчанию - пользователь ansible)
 compose_file_name: "docker-compose.yml"   # Имя файла compose (если не стандартное)
 compose_project_name: ""                  # Имя проекта в docker-compose (по умолчанию — имя папки)
+container_name: ""                        # Имя контейнера (если пусто - генерируется из docker_image_name или 'app')
 compose_template_path: ""                  # Путь к пользовательскому шаблону (относительно inventory/templates), если пусто - используется стандартный шаблон из роли
 pull_policy: "always"                     # always / missing / never
 restart_policy: "unless-stopped"          # Политика перезапуска контейнера в docker-compose.yml (unless-stopped, always, on-failure, no)
-restart_containers: true                  # Перезапускать контейнеры после изменений в compose файле (true/false)
+recreate_policy: "always"                 # Политика пересоздания контейнеров: always, never, auto
 remove_orphans: true                      # Удалять сервисы, которых нет в compose-файле
 compose_timeout: 120                      # Таймаут в секундах для docker compose up
 notify_on_deploy: false                   # Отправлять уведомление после деплоя (нужна доп. роль)
