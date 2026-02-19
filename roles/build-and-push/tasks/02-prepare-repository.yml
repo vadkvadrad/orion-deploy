@@ -1,0 +1,57 @@
+---
+- name: Check available disk space
+  shell: df -h / | tail -1 | awk '{print $4}'
+  register: disk_space
+  become: true
+  changed_when: false
+
+- name: Display available disk space
+  debug:
+    msg: "Available disk space: {{ disk_space.stdout }}"
+
+- name: Check if sufficient disk space available (warn if less than 1GB)
+  debug:
+    msg: "WARNING: Low disk space detected ({{ disk_space.stdout }}). Build may fail if less than 1GB available."
+  when: disk_space.stdout is match('.*[0-9]+[KM].*')
+
+- name: Create temporary directory for repository clone
+  file:
+    path: "{{ build_temp_dir }}"
+    state: directory
+    mode: '0755'
+  become: true
+  check_mode: no
+
+- name: Clone or update Git repository
+  git:
+    repo: "{{ app_git_repository }}"
+    dest: "{{ build_temp_dir }}"
+    version: "{{ app_git_branch | default('main') }}"
+    force: true
+    update: true
+  become: true
+  check_mode: no
+
+- name: Check if Dockerfile exists
+  stat:
+    path: "{{ build_temp_dir }}/Dockerfile"
+  register: dockerfile_stat
+  become: true
+
+- name: List directory contents for debugging
+  command: ls -la {{ build_temp_dir }}
+  register: dir_contents
+  become: true
+  when: not dockerfile_stat.stat.exists
+  changed_when: false
+
+- name: Show directory contents if Dockerfile not found
+  debug:
+    var: dir_contents.stdout_lines
+  when: not dockerfile_stat.stat.exists
+
+- name: Fail if Dockerfile not found
+  fail:
+    msg: "Dockerfile not found in {{ build_temp_dir }}. Please check that the repository contains a Dockerfile."
+  when: not dockerfile_stat.stat.exists
+

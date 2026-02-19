@@ -1,0 +1,52 @@
+---
+- name: Ensure docker-compose project directory exists
+  file:
+    path: "{{ actual_compose_project_dir }}"
+    state: directory
+    mode: '0755'
+    owner: "{{ compose_user }}"
+
+- name: Set template path
+  set_fact:
+    template_filename: "{{ compose_template_path | default('docker-compose.yml.j2') }}"
+  
+- name: Ensure template filename is not empty
+  set_fact:
+    template_filename: "docker-compose.yml.j2"
+  when: not template_filename or template_filename | trim | length == 0
+
+- name: Set full template path
+  set_fact:
+    custom_template_full_path: "{{ playbook_dir }}/inventory/templates/{{ template_filename }}"
+
+- name: Check if custom docker-compose template exists in inventory
+  stat:
+    path: "{{ custom_template_full_path }}"
+  register: custom_template_stat
+  delegate_to: localhost
+  become: false
+  failed_when: false
+
+- name: Debug template check
+  debug:
+    msg: "Custom template exists: {{ custom_template_stat.stat.exists }}, is file: {{ custom_template_stat.stat.isreg if custom_template_stat.stat.exists else 'N/A' }}, path: {{ custom_template_full_path }}, compose_template_path: '{{ compose_template_path }}'"
+  when: custom_template_stat.stat.exists is defined
+
+- name: Render custom template from inventory
+  copy:
+    content: "{{ lookup('template', custom_template_full_path) }}"
+    dest: "{{ actual_compose_project_dir }}/{{ compose_file_name }}"
+    mode: '0644'
+    owner: "{{ compose_user }}"
+  when: custom_template_stat.stat.exists | bool and custom_template_stat.stat.isreg | bool
+  register: template_result
+
+- name: Copy docker-compose template to remote server (default template)
+  template:
+    src: docker-compose.yml.j2
+    dest: "{{ actual_compose_project_dir }}/{{ compose_file_name }}"
+    mode: '0644'
+    owner: "{{ compose_user }}"
+  when: not (custom_template_stat.stat.exists | bool and custom_template_stat.stat.isreg | bool)
+  register: template_result
+

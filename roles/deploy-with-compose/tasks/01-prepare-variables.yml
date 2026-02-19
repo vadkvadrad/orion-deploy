@@ -1,0 +1,21 @@
+---
+- name: Set compose project directory (use temp if not specified)
+  set_fact:
+    actual_compose_project_dir: "{{ compose_project_dir if compose_project_dir else '/tmp/ansible-compose-' + ansible_date_time.epoch | string }}"
+    is_temp_compose_dir: "{{ compose_project_dir | length == 0 }}"
+
+- name: Generate container name
+  set_fact:
+    raw_container_name: >-
+      {%- if container_name and container_name | trim | length > 0 -%}
+        {{ container_name }}
+      {%- elif docker_image_name and docker_image_name | trim | length > 0 -%}
+        {{ docker_image_name | basename | replace('/', '_') | replace(':', '_') }}
+      {%- else -%}
+        app
+      {%- endif -%}
+
+- name: Normalize container name to match Docker requirements
+  set_fact:
+    actual_container_name: "{{ raw_container_name | replace(' ', '_') | replace('-', '_') | lower | regex_replace('^([^a-zA-Z0-9])', 'app_\\1') | regex_replace('[^a-zA-Z0-9_.-]', '_') | default('app') }}"
+

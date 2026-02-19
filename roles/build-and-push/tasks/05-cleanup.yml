@@ -1,0 +1,8 @@
+---
+- name: Remove temporary clone directory
+  file:
+    path: "{{ build_temp_dir }}"
+    state: absent
+  become: true
+  check_mode: no
+

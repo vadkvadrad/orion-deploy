@@ -1,0 +1,67 @@
+---
+- name: Build and push Docker image (using buildx)
+  command: >-
+    docker buildx build
+    --platform {{ docker_platforms | default('linux/amd64') }}
+    -t {{ docker_image_name }}:{{ docker_image_tag }}
+    --push
+    --progress=plain
+    {{ build_temp_dir }}
+  register: buildx_build_result
+  when: buildx_available
+  become: true
+  check_mode: no
+
+- name: Show build output
+  debug:
+    msg: "{{ buildx_build_result.stdout_lines }}"
+  when: buildx_available and buildx_build_result.stdout_lines | length > 0
+
+- name: Show build errors if any
+  debug:
+    msg: "{{ buildx_build_result.stderr_lines }}"
+  when: buildx_available and buildx_build_result.stderr_lines | length > 0
+
+- name: Check for disk space error
+  debug:
+    msg: "ERROR: Build failed due to insufficient disk space. Please free up space on the server and try again."
+  when: buildx_available and buildx_build_result.rc != 0 and ('no space left on device' in buildx_build_result.stderr | default(''))
+
+- name: Build and push Docker image (fallback to docker build)
+  shell: >-
+    docker build
+    --progress=plain
+    -t {{ docker_image_name }}:{{ docker_image_tag }}
+    {{ build_temp_dir }}
+  when: not buildx_available
+  become: true
+  check_mode: no
+  register: docker_build_result
+
+- name: Show docker build output
+  debug:
+    msg: "{{ docker_build_result.stdout_lines }}"
+  when: not buildx_available and docker_build_result.stdout_lines | length > 0
+
+- name: Show docker build errors if any
+  debug:
+    msg: "{{ docker_build_result.stderr_lines }}"
+  when: not buildx_available and docker_build_result.stderr_lines | length > 0
+
+- name: Check for disk space error (fallback build)
+  debug:
+    msg: "ERROR: Build failed due to insufficient disk space. Please free up space on the server and try again."
+  when: not buildx_available and docker_build_result.rc != 0 and ('no space left on device' in docker_build_result.stderr | default(''))
+
+- name: Push Docker image (fallback method)
+  command: docker push {{ docker_image_name }}:{{ docker_image_tag }}
+  register: docker_push_result
+  when: not buildx_available
+  become: true
+  check_mode: no
+
+- name: Show docker push output
+  debug:
+    msg: "{{ docker_push_result.stdout_lines }}"
+  when: not buildx_available and docker_push_result.stdout_lines | length > 0
+

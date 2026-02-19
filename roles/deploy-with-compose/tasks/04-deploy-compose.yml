@@ -1,0 +1,16 @@
+---
+- name: Deploy application with docker compose
+  community.docker.docker_compose_v2:
+    project_src: "{{ actual_compose_project_dir }}"
+    state: present
+    pull: "{{ pull_policy | default('always') }}"
+    recreate: "{{ recreate_policy | default('always') }}"
+    remove_orphans: "{{ remove_orphans | default(true) | bool }}"
+    timeout: "{{ compose_timeout | default(120) }}"
+  register: compose_result
+
+- name: Show deployment result (when changed or failed)
+  debug:
+    msg: "{{ compose_result }}"
+  when: compose_result.changed or compose_result.failed
+

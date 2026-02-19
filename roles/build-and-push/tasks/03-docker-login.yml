@@ -1,0 +1,8 @@
+---
+- name: Log in to Docker registry
+  community.docker.docker_login:
+    registry_url: "{{ docker_registry_url | default('https://index.docker.io/v1/') }}"
+    username: "{{ docker_username }}"
+    password: "{{ docker_password }}"
+  become: true
+

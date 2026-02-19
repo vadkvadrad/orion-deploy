@@ -1,0 +1,38 @@
+---
+- name: Check if buildx is available
+  command: docker buildx version
+  register: buildx_check
+  changed_when: false
+  failed_when: false
+  become: true
+
+- name: Set fact for buildx availability
+  set_fact:
+    buildx_available: "{{ buildx_check.rc == 0 }}"
+
+- name: Check if buildx builder exists
+  command: docker buildx ls
+  register: buildx_list
+  changed_when: false
+  failed_when: false
+  when: buildx_available
+  become: true
+
+- name: Set fact if builder exists
+  set_fact:
+    builder_exists: "{{ buildx_builder_name | default('ansible-builder') in buildx_list.stdout }}"
+  when: buildx_available
+
+- name: Create buildx builder if needed
+  command: docker buildx create --name {{ buildx_builder_name | default('ansible-builder') }} --use
+  register: buildx_create
+  changed_when: buildx_create.rc == 0
+  failed_when: buildx_create.rc != 0
+  when: buildx_available and not builder_exists
+  become: true
+
+- name: Use existing buildx builder
+  command: docker buildx use {{ buildx_builder_name | default('ansible-builder') }}
+  when: buildx_available and builder_exists
+  become: true
+

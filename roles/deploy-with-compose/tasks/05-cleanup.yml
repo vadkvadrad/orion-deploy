@@ -1,0 +1,7 @@
+---
+- name: Clean up temporary compose directory
+  file:
+    path: "{{ actual_compose_project_dir }}"
+    state: absent
+  when: is_temp_compose_dir | bool
+

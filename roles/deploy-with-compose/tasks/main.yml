@@ -1,109 +1,15 @@
 ---
-- name: Set compose project directory (use temp if not specified)
-  set_fact:
-    actual_compose_project_dir: "{{ compose_project_dir if compose_project_dir else '/tmp/ansible-compose-' + ansible_date_time.epoch | string }}"
-    is_temp_compose_dir: "{{ compose_project_dir | length == 0 }}"
+- name: Prepare variables and paths
+  ansible.builtin.include_tasks: 01-prepare-variables.yml
 
-- name: Generate container name
-  set_fact:
-    raw_container_name: >-
-      {%- if container_name and container_name | trim | length > 0 -%}
-        {{ container_name }}
-      {%- elif docker_image_name and docker_image_name | trim | length > 0 -%}
-        {{ docker_image_name | basename | replace('/', '_') | replace(':', '_') }}
-      {%- else -%}
-        app
-      {%- endif -%}
+- name: Prepare directory and templates
+  ansible.builtin.include_tasks: 02-prepare-directory-and-templates.yml
 
-- name: Normalize container name to match Docker requirements
-  set_fact:
-    actual_container_name: "{{ raw_container_name | replace(' ', '_') | replace('-', '_') | lower | regex_replace('^([^a-zA-Z0-9])', 'app_\\1') | regex_replace('[^a-zA-Z0-9_.-]', '_') | default('app') }}"
+- name: Prepare Docker images
+  ansible.builtin.include_tasks: 03-prepare-images.yml
 
-- name: Ensure docker-compose project directory exists
-  file:
-    path: "{{ actual_compose_project_dir }}"
-    state: directory
-    mode: '0755'
-    owner: "{{ compose_user }}"
+- name: Deploy with docker compose
+  ansible.builtin.include_tasks: 04-deploy-compose.yml
 
-- name: Set template path
-  set_fact:
-    template_filename: "{{ compose_template_path | default('docker-compose.yml.j2') }}"
-  
-- name: Ensure template filename is not empty
-  set_fact:
-    template_filename: "docker-compose.yml.j2"
-  when: not template_filename or template_filename | trim | length == 0
-
-- name: Set full template path
-  set_fact:
-    custom_template_full_path: "{{ playbook_dir }}/inventory/templates/{{ template_filename }}"
-
-- name: Check if custom docker-compose template exists in inventory
-  stat:
-    path: "{{ custom_template_full_path }}"
-  register: custom_template_stat
-  delegate_to: localhost
-  become: false
-  failed_when: false
-
-- name: Debug template check
-  debug:
-    msg: "Custom template exists: {{ custom_template_stat.stat.exists }}, is file: {{ custom_template_stat.stat.isreg if custom_template_stat.stat.exists else 'N/A' }}, path: {{ custom_template_full_path }}, compose_template_path: '{{ compose_template_path }}'"
-  when: custom_template_stat.stat.exists is defined
-
-- name: Render custom template from inventory
-  copy:
-    content: "{{ lookup('template', custom_template_full_path) }}"
-    dest: "{{ actual_compose_project_dir }}/{{ compose_file_name }}"
-    mode: '0644'
-    owner: "{{ compose_user }}"
-  when: custom_template_stat.stat.exists | bool and custom_template_stat.stat.isreg | bool
-  register: template_result
-
-- name: Copy docker-compose template to remote server (default template)
-  template:
-    src: docker-compose.yml.j2
-    dest: "{{ actual_compose_project_dir }}/{{ compose_file_name }}"
-    mode: '0644'
-    owner: "{{ compose_user }}"
-  when: not (custom_template_stat.stat.exists | bool and custom_template_stat.stat.isreg | bool)
-  register: template_result
-
-- name: Pull latest image
-  community.docker.docker_image:
-    name: "{{ docker_image_name }}"
-    tag: "{{ docker_image_tag }}"
-    source: pull
-    force_source: true
-
-- name: Stop and remove existing container if exists (by name)
-  shell: |
-    if docker ps -a --format '{{ '{{' }}.Names{{ '}}' }}' | grep -q "^{{ actual_container_name }}$"; then
-      docker stop {{ actual_container_name }} || true
-      docker rm {{ actual_container_name }} || true
-    fi
-  become: true
-  failed_when: false
-  changed_when: false
-
-- name: Deploy application with docker compose
-  community.docker.docker_compose_v2:
-    project_src: "{{ actual_compose_project_dir }}"
-    state: present
-    pull: "{{ pull_policy | default('always') }}"
-    recreate: "{{ recreate_policy | default('always') }}"
-    remove_orphans: "{{ remove_orphans | default(true) | bool }}"
-    timeout: "{{ compose_timeout | default(120) }}"
-  register: compose_result
-
-- name: Show deployment result (when changed or failed)
-  debug:
-    msg: "{{ compose_result }}"
-  when: compose_result.changed or compose_result.failed
-
-- name: Clean up temporary compose directory
-  file:
-    path: "{{ actual_compose_project_dir }}"
-    state: absent
-  when: is_temp_compose_dir | bool
+- name: Cleanup temporary files
+  ansible.builtin.include_tasks: 05-cleanup.yml
